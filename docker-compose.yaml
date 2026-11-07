@@ -1,0 +1,191 @@
+name: payment_project
+services:
+
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    hostname: rabbitmq
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  postgres:
+      image: postgres:15-alpine
+      container_name: postgres
+      hostname: postgres
+      environment:
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: mydb
+      ports:
+        - "5432:5432"
+      volumes:
+        - postgres-data:/var/lib/postgresql/data
+      healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U postgres -d mydb"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+      restart: unless-stopped
+      networks:
+        - app-network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    hostname: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  migrate:
+    build: .
+    container_name: migrate
+    command: alembic -c /app/application/alembic.ini upgrade head
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app/application
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/mydb
+    networks:
+      - app-network
+    restart: "no"
+
+  fast-api:
+    build: .
+    container_name: fastapi-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app/application
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/mydb
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  celery-worker:
+    build: .
+    container_name: celery-worker
+    command: celery -A application.celery_module.base:celery_app worker --loglevel=info
+    depends_on:
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - .:/app/application
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/mydb
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  celery-beat:
+    build: .
+    container_name: celery-beat
+    command: celery -A application.celery_module.base:celery_app beat --loglevel=info --schedule=/app/beat-data/celerybeat-schedule
+    depends_on:
+      redis:
+        condition: service_started
+      celery-worker:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - .:/app/application
+      - beat-data:/app/beat-data
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/mydb
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  flower:
+    build: .
+    container_name: flower
+    command: celery -A application.celery_module.base:celery_app flower --port=5555
+    depends_on:
+      redis:
+        condition: service_started
+      celery-worker:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "5555:5555"
+    volumes:
+      - .:/app/application
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    restart: unless-stopped
+    networks:
+      - app-network
+
+volumes:
+  postgres-data:
+  pgadmin-data:
+  redis-data:
+  beat-data:
+
+networks:
+  app-network:
+    driver: bridge

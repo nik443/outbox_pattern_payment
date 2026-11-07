@@ -1,0 +1,12 @@
+fastapi==0.162.0
+uvicorn[standard]
+celery[redis]
+sqlalchemy[asyncio]
+asyncpg
+faststream[rabbit]
+aiohttp
+alembic
+loguru==0.7.3
+flower==2.2.0
+pydantic==2.14.1
+pydantic-settings==2.16.2

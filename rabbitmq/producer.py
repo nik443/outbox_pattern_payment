@@ -6,7 +6,7 @@ from sqlalchemy.orm import load_only, selectinload
 
 from application.core.db.models import OutboxAction, ActionType, Payment
 from application.core.db.session import async_session_maker
-from application.rabbitmq.broker import broker, new_payments_queue, dead_letter_queue
+from application.rabbitmq.broker import broker, new_payments_queue
 
 
 async def send_payment_to_queue() -> None:
@@ -42,7 +42,7 @@ async def send_payment_to_queue() -> None:
                                 "payment_id": action.payment_id,
                                 "processing_attempts": action.payment.processing_attempts,
                             },
-                            queue=new_payments_queue if action.repeat_count < 3 else dead_letter_queue,
+                            queue=new_payments_queue,
                         )
                         action.is_published = True
             except Exception as e:

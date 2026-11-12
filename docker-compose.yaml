@@ -107,6 +107,26 @@ services:
     networks:
       - app-network
 
+  consumer:
+    build: .
+    container_name: consumer
+    command: python -m application.rabbitmq.consumer
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - .:/app/application
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/mydb
+    restart: unless-stopped
+    networks:
+      - app-network
+
   celery-worker:
     build: .
     container_name: celery-worker

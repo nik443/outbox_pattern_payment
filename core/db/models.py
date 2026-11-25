@@ -68,10 +68,6 @@ class Payment(Base):
         nullable=True,
         default=None
     )
-    processing_attempts: Mapped[int] = mapped_column(
-        default=0,
-        nullable=False,
-    )
 
 
 class OutboxAction(Base):
@@ -92,10 +88,6 @@ class OutboxAction(Base):
     payment: Mapped[Payment] = relationship()
     action_type: Mapped[ActionType] = mapped_column(
         SAEnum(ActionType, name="action_type_enum"),
-        nullable=False,
-    )
-    repeat_count: Mapped[int] = mapped_column(
-        default=0,
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(

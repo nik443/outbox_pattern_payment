@@ -34,10 +34,6 @@ celery_app.conf.update(
             "task": "application.celery_module.tasks.check_outbox_actions",
             "schedule": crontab(minute="*/1"),
         },
-        "send_success_payment_webhook": {
-            "task": "application.celery_module.tasks.send_success_payment_webhook",
-            "schedule": crontab(minute="*/1"),
-        }
     },
 )
 
